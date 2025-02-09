@@ -1,17 +1,26 @@
 diff --git a/riscv/cachesim.cc b/riscv/cachesim.cc
-index 6e030d13..23256526 100644
+index 6e030d13..820d4cf3 100644
 --- a/riscv/cachesim.cc
 +++ b/riscv/cachesim.cc
-@@ -58,6 +58,69 @@ void cache_sim_t::init()
+@@ -6,6 +6,8 @@
+ #include <iostream>
+ #include <iomanip>
+ 
++#define VICTIM_CACHE_LINES 32
++
+ cache_sim_t::cache_sim_t(size_t _sets, size_t _ways, size_t _linesz, const char* _name)
+ : sets(_sets), ways(_ways), linesz(_linesz), name(_name), log(false)
+ {
+@@ -58,6 +60,69 @@ void cache_sim_t::init()
    writebacks = 0;
  
    miss_handler = NULL;
 +
-+  victim_cache_tags = new uint64_t[256]();
-+  victim_cache_priorities = new uint8_t[256]();
-+  victim_cache_valid = new uint8_t[256]();
++  victim_cache_tags = new uint64_t[VICTIM_CACHE_LINES]();
++  victim_cache_priorities = new uint8_t[VICTIM_CACHE_LINES]();
++  victim_cache_valid = new uint8_t[VICTIM_CACHE_LINES]();
 +  victim_cache_ptr = 0;
-+  for (int i = 0; i < 256; i++) {
++  for (int i = 0; i < VICTIM_CACHE_LINES; i++) {
 +    victim_cache_priorities[i] = 0;
 +    victim_cache_valid[i] = 0;
 +  }
@@ -32,7 +41,7 @@ index 6e030d13..23256526 100644
 +    uint64_t victim = victimize(addr);
 +    victim_cache_ptr = 0;
 +    bool wb = true;
-+    for (int i = 0; i < 256; i++) {
++    for (int i = 0; i < VICTIM_CACHE_LINES; i++) {
 +      if (!victim_cache_valid[i]) {
 +        victim_cache_ptr = i;
 +        victim_cache_valid[i] = 1;
@@ -45,7 +54,7 @@ index 6e030d13..23256526 100644
 +        victim_cache_ptr = i;
 +      }
 +    }
-+    for (int i = 0; i < 256; i++) {
++    for (int i = 0; i < VICTIM_CACHE_LINES; i++) {
 +      if (victim_cache_valid[i])
 +        victim_cache_priorities[i]++;
 +    }
@@ -57,10 +66,10 @@ index 6e030d13..23256526 100644
 +
 +uint64_t* cache_sim_t::check_victim_tag(uint64_t addr) {
 +  size_t tag = (addr >> idx_shift) | VALID;
-+  for (int i = 0; i < 256; i++) {
++  for (int i = 0; i < VICTIM_CACHE_LINES; i++) {
 +    if ((tag == (victim_cache_tags[i] & ~DIRTY)) && (victim_cache_valid[i])) {
 +      victim_cache_ptr = i;
-+      for (int j = 0; j < 256; j++) {
++      for (int j = 0; j < VICTIM_CACHE_LINES; j++) {
 +        if (victim_cache_valid[j])
 +          victim_cache_priorities[j]++;
 +      }
@@ -72,7 +81,7 @@ index 6e030d13..23256526 100644
  }
  
  cache_sim_t::cache_sim_t(const cache_sim_t& rhs)
-@@ -135,28 +198,15 @@ void cache_sim_t::access(uint64_t addr, size_t bytes, bool store)
+@@ -135,28 +200,15 @@ void cache_sim_t::access(uint64_t addr, size_t bytes, bool store)
    }
  
    store ? write_misses++ : read_misses++;
@@ -105,10 +114,10 @@ index 6e030d13..23256526 100644
  
  fa_cache_sim_t::fa_cache_sim_t(size_t ways, size_t linesz, const char* name)
 diff --git a/riscv/cachesim.h b/riscv/cachesim.h
-index 259725ac..542bf0b1 100644
+index 259725ac..4fd53eff 100644
 --- a/riscv/cachesim.h
 +++ b/riscv/cachesim.h
-@@ -27,10 +27,11 @@ class cache_sim_t
+@@ -27,6 +27,7 @@ class cache_sim_t
    virtual ~cache_sim_t();
  
    void access(uint64_t addr, size_t bytes, bool store);
@@ -116,11 +125,6 @@ index 259725ac..542bf0b1 100644
    void print_stats();
    void set_miss_handler(cache_sim_t* mh) { miss_handler = mh; }
    void set_log(bool _log) { log = _log; }
--
-+
-   static cache_sim_t* construct(const char* config, const char* name);
- 
-  protected:
 @@ -39,6 +40,7 @@ class cache_sim_t
  
    virtual uint64_t* check_tag(uint64_t addr);
