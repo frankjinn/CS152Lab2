@@ -1,0 +1,143 @@
+diff --git a/riscv/cachesim.cc b/riscv/cachesim.cc
+index 6e030d13..23256526 100644
+--- a/riscv/cachesim.cc
++++ b/riscv/cachesim.cc
+@@ -58,6 +58,69 @@ void cache_sim_t::init()
+   writebacks = 0;
+ 
+   miss_handler = NULL;
++
++  victim_cache_tags = new uint64_t[256]();
++  victim_cache_priorities = new uint8_t[256]();
++  victim_cache_valid = new uint8_t[256]();
++  victim_cache_ptr = 0;
++  for (int i = 0; i < 256; i++) {
++    victim_cache_priorities[i] = 0;
++    victim_cache_valid[i] = 0;
++  }
++
++}
++
++void cache_sim_t::victim_cache_access(uint64_t addr, bool store) {
++  uint64_t* victim_tag_line = check_victim_tag(addr);
++  if (victim_tag_line) {
++    if (store) {
++      *victim_tag_line |= DIRTY;
++    }
++    uint64_t victim = victimize(addr);
++    uint64_t eviction = victim_cache_tags[victim_cache_ptr];
++    victim_cache_tags[victim_cache_ptr] = victim;
++  } else {
++    store ? write_misses++ : read_misses++;
++    uint64_t victim = victimize(addr);
++    victim_cache_ptr = 0;
++    bool wb = true;
++    for (int i = 0; i < 256; i++) {
++      if (!victim_cache_valid[i]) {
++        victim_cache_ptr = i;
++        victim_cache_valid[i] = 1;
++        victim_cache_priorities[victim_cache_ptr] = 0;
++        victim_cache_tags[victim_cache_ptr] = victim;
++        wb = false;
++        return;
++      }
++      if (victim_cache_priorities[i] > victim_cache_priorities[victim_cache_ptr]) {
++        victim_cache_ptr = i;
++      }
++    }
++    for (int i = 0; i < 256; i++) {
++      if (victim_cache_valid[i])
++        victim_cache_priorities[i]++;
++    }
++    if (wb) writebacks++;
++    victim_cache_priorities[victim_cache_ptr] = 0;
++    victim_cache_tags[victim_cache_ptr] = victim;
++  }
++}
++
++uint64_t* cache_sim_t::check_victim_tag(uint64_t addr) {
++  size_t tag = (addr >> idx_shift) | VALID;
++  for (int i = 0; i < 256; i++) {
++    if ((tag == (victim_cache_tags[i] & ~DIRTY)) && (victim_cache_valid[i])) {
++      victim_cache_ptr = i;
++      for (int j = 0; j < 256; j++) {
++        if (victim_cache_valid[j])
++          victim_cache_priorities[j]++;
++      }
++      victim_cache_priorities[i] = 0;
++      return &victim_cache_tags[i];
++    }
++  }
++  return NULL;
+ }
+ 
+ cache_sim_t::cache_sim_t(const cache_sim_t& rhs)
+@@ -135,28 +198,15 @@ void cache_sim_t::access(uint64_t addr, size_t bytes, bool store)
+   }
+ 
+   store ? write_misses++ : read_misses++;
++
++  victim_cache_access(addr, store);
++
+   if (log)
+   {
+     std::cerr << name << " "
+               << (store ? "write" : "read") << " miss 0x"
+               << std::hex << addr << std::endl;
+   }
+-
+-  uint64_t victim = victimize(addr);
+-
+-  if ((victim & (VALID | DIRTY)) == (VALID | DIRTY))
+-  {
+-    uint64_t dirty_addr = (victim & ~(VALID | DIRTY)) << idx_shift;
+-    if (miss_handler)
+-      miss_handler->access(dirty_addr, linesz, true);
+-    writebacks++;
+-  }
+-
+-  if (miss_handler)
+-    miss_handler->access(addr & ~(linesz-1), linesz, false);
+-
+-  if (store)
+-    *check_tag(addr) |= DIRTY;
+ }
+ 
+ fa_cache_sim_t::fa_cache_sim_t(size_t ways, size_t linesz, const char* name)
+diff --git a/riscv/cachesim.h b/riscv/cachesim.h
+index 259725ac..542bf0b1 100644
+--- a/riscv/cachesim.h
++++ b/riscv/cachesim.h
+@@ -27,10 +27,11 @@ class cache_sim_t
+   virtual ~cache_sim_t();
+ 
+   void access(uint64_t addr, size_t bytes, bool store);
++  void victim_cache_access(uint64_t addr, bool store);
+   void print_stats();
+   void set_miss_handler(cache_sim_t* mh) { miss_handler = mh; }
+   void set_log(bool _log) { log = _log; }
+-
++
+   static cache_sim_t* construct(const char* config, const char* name);
+ 
+  protected:
+@@ -39,6 +40,7 @@ class cache_sim_t
+ 
+   virtual uint64_t* check_tag(uint64_t addr);
+   virtual uint64_t victimize(uint64_t addr);
++  virtual uint64_t* check_victim_tag(uint64_t addr);
+ 
+   lfsr_t lfsr;
+   cache_sim_t* miss_handler;
+@@ -49,6 +51,11 @@ class cache_sim_t
+   size_t idx_shift;
+ 
+   uint64_t* tags;
++
++  uint64_t* victim_cache_tags;
++  uint8_t* victim_cache_priorities;
++  uint8_t* victim_cache_valid;
++  uint8_t victim_cache_ptr;
+   
+   uint64_t read_accesses;
+   uint64_t read_misses;
