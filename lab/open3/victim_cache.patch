@@ -1,17 +1,18 @@
 diff --git a/riscv/cachesim.cc b/riscv/cachesim.cc
-index 6e030d13..820d4cf3 100644
+index 6e030d13..78269e5f 100644
 --- a/riscv/cachesim.cc
 +++ b/riscv/cachesim.cc
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,9 @@
  #include <iostream>
  #include <iomanip>
  
++// Thanks to Jessica Fan, Owen Thompson, Kenny Wang for the victim cache code.
 +#define VICTIM_CACHE_LINES 32
 +
  cache_sim_t::cache_sim_t(size_t _sets, size_t _ways, size_t _linesz, const char* _name)
  : sets(_sets), ways(_ways), linesz(_linesz), name(_name), log(false)
  {
-@@ -58,6 +60,69 @@ void cache_sim_t::init()
+@@ -58,6 +61,69 @@ void cache_sim_t::init()
    writebacks = 0;
  
    miss_handler = NULL;
@@ -81,11 +82,11 @@ index 6e030d13..820d4cf3 100644
  }
  
  cache_sim_t::cache_sim_t(const cache_sim_t& rhs)
-@@ -135,28 +200,15 @@ void cache_sim_t::access(uint64_t addr, size_t bytes, bool store)
+@@ -134,29 +200,14 @@ void cache_sim_t::access(uint64_t addr, size_t bytes, bool store)
+     return;
    }
  
-   store ? write_misses++ : read_misses++;
-+
+-  store ? write_misses++ : read_misses++;
 +  victim_cache_access(addr, store);
 +
    if (log)
