@@ -39,7 +39,7 @@ $(output_dir):
 # Build simulator preemptively for parallel simulations
 sim_dir := $(base_dir)/../../sims/verilator
 sim_prefix := simulator
-sim := $(sim_dir)/$(sim_prefix)-$(MODEL_PACKAGE)-$(CONFIG)
+sim := $(sim_dir)/$(sim_prefix)-$(MODEL_PACKAGE).harness-$(CONFIG)
 
 .PHONY: sim
 $(sim) sim:
@@ -64,7 +64,7 @@ ccbench_logs := $(patsubst %,$(output_dir)/ccbench-%.log,$(ccbench_sizes))
 ccbench-sweep: $(ccbench_logs)
 
 ccbench_report := $(ccbench_dir)/reports/report-$(CONFIG).txt
-ccbench_plot := $(ccbench_dir)/plots/plot-$(CONFIG).pdf
+ccbench_plot := $(ccbench_dir)/plots/plot-$(CONFIG).png
 
 # Generate consolidated report file
 $(ccbench_report): $(ccbench_logs)
@@ -77,7 +77,12 @@ $(ccbench_report): $(ccbench_logs)
 
 # Generate plot
 $(ccbench_plot): $(ccbench_report)
+	mkdir -p $(dir $@)
 	cd $(ccbench_dir) && ./run_test.py -n -r '$(notdir $<)' -o '$(notdir $@)'
+
+
+.PHONY: ccbench-report
+ccbench-report: $(ccbench_report)
 
 .PHONY: ccbench-plot
 ccbench-plot: $(ccbench_plot)
